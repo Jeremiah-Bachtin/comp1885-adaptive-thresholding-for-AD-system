@@ -1,0 +1,46 @@
+# === Bytecode and Python Cache ===
+__pycache__/
+*.py[cod]
+
+# === Virtual Environment ===
+.venv/
+env/
+*.egg-info/
+
+# === System/OS Files ===
+.DS_Store
+Thumbs.db
+
+# === IDE and Workspace Files ===
+.idea/
+*.iml
+.vscode/
+
+# === Environment and Secrets ===
+.env
+.env.*
+
+# === Logs and Temporary Files ===
+*.log
+*.tmp
+
+# === Outputs and Debug Artefacts (ignored by default) ===
+results/
+!results/final
+
+
+# === Model Weights ===
+models/
+*.h5
+*.joblib
+*.pkl
+
+# === Jupyter Environment Files===
+.ipynb_checkpoints/
+*.ipynb~
+
+# === Conda and Pip Environment Files ===
+*.conda
+*.yml.lock
+Pipfile.lock
+poetry.lock
