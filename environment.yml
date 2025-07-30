@@ -1,0 +1,27 @@
+name: comp1885
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  # === Core ML & Data Processing ===
+  - pandas=2.2.2
+  - numpy=1.24.4
+  - scikit-learn=1.4.2
+  - scipy=1.10.1
+  - joblib=1.2.0
+  - matplotlib=3.8.4
+  - seaborn=0.13.2
+  - tqdm
+
+  # === ML Framework ===
+  - tensorflow=2.10.1  # Safe for Windows GPU training/inference
+
+  # === Evaluation & Utilities ===
+  - python-dotenv=1.1.0
+
+  # === Jupyter Notebook Compatibility ===
+  - ipywidgets>=8.0
+  - widgetsnbextension>=4.0
+
+  # === Testing (Optional) ===
+  - pytest=8.2.0
