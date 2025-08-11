@@ -27,7 +27,7 @@ Thumbs.db
 # === Outputs and Debug Artefacts (ignored by default) ===
 results/*
 !results/final/
-
+!results/final/**
 
 # === Model Weights ===
 models/
