@@ -3,9 +3,28 @@
 **Source:** Hourly historical (Mar 2017 - Jan 2025) weather data retrieved from [Open-Meteo](https://open-meteo.com), including: <br>
 `timestamp`, `temperature_2m`, `surface_pressure`, `wind_speed_10m`, and `precipitation` <br> 
 These are supplemented with outputs from the COMP1884 anomaly detection pipeline. <br>
-**Model:** IFS (Integrated Forecasting System)  
+**Weather Model:** IFS (Integrated Forecasting System)  
+**Model Resolution:** 9km <br>
 **Location:** London Heathrow (London timezone)  
 **Licence:** Public domain (refer to Open-Meteo usage terms)
+
+## Overview
+This dataset originates from the COMP1884 project and covers **February 2017 – January 2025** as the original *training period*.  
+Due to the use of rolling calculations requiring a **minimum of 720 prior observations** (30 days × 24 hours) for certain features, the **first 720 hours** were discarded. As a result, the final dataset spans **March 2017 – January 2025**.
+
+The dataset contains the original raw meteorological variables plus engineered features, model scores, and hybrid anomaly labels produced during the COMP1884 modelling workflow.
+
+**Contents:**
+- **Raw features** from Open-Meteo IFS: `temperature_2m`, `surface_pressure`, `wind_speed_10m`, `precipitation`, and `timestamp`.
+- **Engineered features**: statistical transformations (e.g., z-scores, rolling means, log transforms) and time encodings (hour/month in sine and cosine).
+- **Model outputs**: Isolation Forest scores, LSTM-AE reconstruction scores.
+- **Binary anomaly flags**: model-specific (`is_if_anomaly`, `is_lstm_anomaly`).
+- **Hybrid anomaly labels** assigned via rule-based logic:
+  - `Normal` – neither model flagged
+  - `Point anomaly` – flagged by IF only
+  - `Pattern anomaly` – flagged by LSTM-AE only
+  - `Compound anomaly` – flagged by both models
+
 
 | Column Name             | Description                                                                 |
 |------------------------|-----------------------------------------------------------------------------|
