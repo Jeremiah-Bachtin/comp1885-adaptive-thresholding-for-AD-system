@@ -1,3 +1,5 @@
+# config/config.py
+
 import os
 from dotenv import load_dotenv
 import re
@@ -219,3 +221,118 @@ _readme_summary = {
 }
 
 write_readme(RESULTS_RUN_DIR, RUN_SLUG, summary=_readme_summary)
+
+# ===============================
+# Confidence Scoring (percentile-rank)
+# ===============================
+def _get_bool(env_key: str, default: str | int = "1") -> bool:
+    """Parse common truthy/falsey values from env."""
+    v = os.getenv(env_key, str(default)).strip().lower()
+    return v in {"1", "true", "yes", "on", "y", "t"}
+
+CONF_ENABLED = _get_bool("CONF_ENABLED", "1")
+CONF_METHOD = os.getenv("CONF_METHOD", "percentile_rank").strip().lower()   # future-proof
+if CONF_METHOD not in {"percentile_rank", "zscore"}:
+    CONF_METHOD = "percentile_rank"
+
+# Tail semantics (which side is 'more anomalous')
+CONF_TAIL_IF = os.getenv("CONF_TAIL_IF", "low").strip().lower()   # low -> conf = 1 - F(x)
+CONF_TAIL_AE = os.getenv("CONF_TAIL_AE", "high").strip().lower()  # high -> conf = F(x)
+if CONF_TAIL_IF not in {"low", "high"}:  CONF_TAIL_IF = "low"
+if CONF_TAIL_AE not in {"low", "high"}:  CONF_TAIL_AE = "high"
+
+# Warm-up policy: inherit adaptive policy so windows align exactly unless overridden
+CONF_MIN_PERIODS_POLICY = os.getenv("CONF_MIN_PERIODS", "inherit").strip().lower()
+if CONF_MIN_PERIODS_POLICY not in {"inherit", "window", "1"}:
+    CONF_MIN_PERIODS_POLICY = "inherit"
+
+# Window source: confidence uses each combo’s own IF/AE window (hours), i.e. mirrors thresholds
+CONF_WINDOW_SOURCE = os.getenv("CONF_WINDOW_SOURCE", "combo").strip().lower()
+if CONF_WINDOW_SOURCE not in {"combo"}:
+    CONF_WINDOW_SOURCE = "combo"
+
+# Numerical safety / clipping
+def _get_float(env_key: str, default: float) -> float:
+    try:
+        return float(os.getenv(env_key, str(default)))
+    except Exception:
+        return default
+
+CONF_EPS       = _get_float("CONF_EPS", 1e-9)
+CONF_CLIP_MIN  = _get_float("CONF_CLIP_MIN", 1e-3)
+CONF_CLIP_MAX  = _get_float("CONF_CLIP_MAX", 0.999)
+
+# Emission policy (which anomaly types produce a final confidence value)
+_raw_emit = os.getenv("CONF_EMIT_TYPES", "Point,Pattern,Compound")
+CONF_EMIT_TYPES = {x.strip() for x in _raw_emit.split(",") if x.strip()}  # e.g. {"Point","Pattern","Compound"}
+
+# Source routing and aggregation
+CONF_COMPOUND_AGG = os.getenv("CONF_COMPOUND_AGG", "mean").strip().lower()     # mean|min|max|harmonic (future)
+CONF_POINT_SOURCE = os.getenv("CONF_POINT_SOURCE", "IF").strip().upper()       # IF|AE
+CONF_PATTERN_SOURCE = os.getenv("CONF_PATTERN_SOURCE", "AE").strip().upper()   # IF|AE
+
+# Respect global combo scope: only compute for combos already built in sidecar
+CONF_SCOPE_RESPECTS_COMBOS = _get_bool("CONF_SCOPE_RESPECTS_COMBOS", "1")
+
+# Output naming
+CONF_COL_PREFIX = os.getenv("CONF_COL_PREFIX", "conf").strip()
+
+def resolve_min_periods(window_hours: int) -> int:
+    """
+    Return the effective min_periods for a given window (in hours) for confidence scoring.
+    If CONF_MIN_PERIODS=inherit, mirror the adaptive policy:
+      - 'window' → require full window
+      - '1'      → emit from first row
+    """
+    policy = CONF_MIN_PERIODS_POLICY
+    if policy == "inherit":
+        policy = ADAPTIVE_MIN_PERIODS  # 'window' or '1'
+    return window_hours if policy == "window" else 1
+
+def tail_direction_for(model: str) -> str:
+    """
+    Get the configured tail direction ('low'|'high') for a model key: 'IF' or 'AE'.
+    """
+    m = model.strip().upper()
+    return CONF_TAIL_IF if m == "IF" else CONF_TAIL_AE
+
+def should_emit_for_label(label: str) -> bool:
+    """
+    True iff we should output a final confidence for this anomaly type
+    given CONF_EMIT_TYPES policy.
+    """
+    return (label or "").strip().title() in CONF_EMIT_TYPES
+
+_fingerprint.update({
+    # confidence knobs
+    "CONF_ENABLED": CONF_ENABLED,
+    "CONF_METHOD": CONF_METHOD,
+    "CONF_TAIL_IF": CONF_TAIL_IF,
+    "CONF_TAIL_AE": CONF_TAIL_AE,
+    "CONF_MIN_PERIODS_POLICY": CONF_MIN_PERIODS_POLICY,
+    "CONF_WINDOW_SOURCE": CONF_WINDOW_SOURCE,
+    "CONF_EPS": CONF_EPS,
+    "CONF_CLIP_MIN": CONF_CLIP_MIN,
+    "CONF_CLIP_MAX": CONF_CLIP_MAX,
+    "CONF_EMIT_TYPES": sorted(CONF_EMIT_TYPES),
+    "CONF_COMPOUND_AGG": CONF_COMPOUND_AGG,
+    "CONF_POINT_SOURCE": CONF_POINT_SOURCE,
+    "CONF_PATTERN_SOURCE": CONF_PATTERN_SOURCE,
+    "CONF_SCOPE_RESPECTS_COMBOS": CONF_SCOPE_RESPECTS_COMBOS,
+    "CONF_COL_PREFIX": CONF_COL_PREFIX,
+})
+
+_readme_summary.update({
+    "CONF_ENABLED": CONF_ENABLED,
+    "CONF_METHOD": CONF_METHOD,
+    "CONF_TAIL_IF": CONF_TAIL_IF,
+    "CONF_TAIL_AE": CONF_TAIL_AE,
+    "CONF_MIN_PERIODS_POLICY": CONF_MIN_PERIODS_POLICY,
+    "CONF_WINDOW_SOURCE": CONF_WINDOW_SOURCE,
+    "CONF_EMIT_TYPES": sorted(CONF_EMIT_TYPES),
+    "CONF_COMPOUND_AGG": CONF_COMPOUND_AGG,
+    "CONF_POINT_SOURCE": CONF_POINT_SOURCE,
+    "CONF_PATTERN_SOURCE": CONF_PATTERN_SOURCE,
+    "CONF_SCOPE_RESPECTS_COMBOS": CONF_SCOPE_RESPECTS_COMBOS,
+    "CONF_COL_PREFIX": CONF_COL_PREFIX,
+})

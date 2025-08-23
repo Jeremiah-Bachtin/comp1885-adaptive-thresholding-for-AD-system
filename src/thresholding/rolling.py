@@ -1,21 +1,34 @@
+from __future__ import annotations
+from typing import Literal, Tuple, Optional
 import pandas as pd
 
-from .ids import q_to_str
+# use your helpers
+from src.utils import naming as N
 
-def make_colnames(model_prefix: str, window: int, quantile: float):
+Direction = Literal["low", "high"]
+
+
+def make_colnames(model_prefix: Literal["if", "lstm"], window: int, quantile: float) -> Tuple[str, str]:
     """
-    Returns (threshold_col_name, flag_col_name) using the 3-digit quantile string.
-    model_prefix: 'if' or 'lstm'
+    Return (threshold_col_name, flag_col_name) using canonical helpers.
+
+    model_prefix: 'if' or 'lstm' ; window is HOURS ; quantile in [0,1]
     """
-    qstr = q_to_str(quantile)
-    thresh_col = f"{model_prefix}_adaptive_thresh_w{window}_q{qstr}"
-    flag_col   = f"is_{model_prefix}_adaptive_w{window}_q{qstr}"
-    return thresh_col, flag_col
+    if model_prefix == "if":
+        return N.thr_if_adapt(window, quantile), N.flg_if_adapt(window, quantile)
+    elif model_prefix == "lstm":
+        return N.thr_ae_adapt(window, quantile), N.flg_ae_adapt(window, quantile)
+    raise ValueError("model_prefix must be 'if' or 'lstm'")
 
 
-def compute_rolling_threshold(df: pd.DataFrame, score_col: str,
-                              window: int, quantile: float,
-                              model_prefix: str, min_periods: int|None=None) -> str:
+def compute_rolling_threshold(
+    df: pd.DataFrame,
+    score_col: str,
+    window: int,
+    quantile: float,
+    model_prefix: Literal["if", "lstm"],
+    min_periods: Optional[int] = None,
+) -> str:
     if min_periods is None:
         min_periods = window
     thresh_col, _ = make_colnames(model_prefix, window, quantile)
@@ -26,7 +39,14 @@ def compute_rolling_threshold(df: pd.DataFrame, score_col: str,
     )
     return thresh_col
 
-def apply_flag(df, score_col, threshold_col, direction, flag_col):
+
+def apply_flag(
+    df: pd.DataFrame,
+    score_col: str,
+    threshold_col: str,
+    direction: Direction,
+    flag_col: str,
+) -> str:
     if direction == "low":
         cond = df[score_col] <= df[threshold_col]
     elif direction == "high":
@@ -35,18 +55,21 @@ def apply_flag(df, score_col, threshold_col, direction, flag_col):
         raise ValueError("direction must be 'low' or 'high'")
 
     valid = df[threshold_col].notna()
-    # nullable boolean so it can hold <NA>
     df[flag_col] = pd.Series(pd.NA, index=df.index, dtype="boolean")
-    df.loc[valid, flag_col] = cond[valid].astype("boolean")
+    df.loc[valid, flag_col] = cond.loc[valid].astype("boolean")
     return flag_col
 
-def compute_and_flag(df: pd.DataFrame, score_col: str,
-                     window: int, quantile: float, model_prefix: str,
-                     direction: str, min_periods: int|None=None):
-    """One call that computes the rolling quantile AND the boolean flag."""
+
+def compute_and_flag(
+    df: pd.DataFrame,
+    score_col: str,
+    window: int,
+    quantile: float,
+    model_prefix: Literal["if", "lstm"],
+    direction: Direction,
+    min_periods: Optional[int] = None,
+) -> Tuple[str, str]:
     thresh_col, flag_col = make_colnames(model_prefix, window, quantile)
     compute_rolling_threshold(df, score_col, window, quantile, model_prefix, min_periods)
     apply_flag(df, score_col, thresh_col, direction, flag_col)
     return thresh_col, flag_col
-
-
