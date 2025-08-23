@@ -1,187 +1,160 @@
 # scripts/03_generate_counts.py
-"""
-Generate anomaly counts per evaluation window.
-
-Compares:
-  - Adaptive thresholds (per combo, from sidecar)
-  - Blended families (if present)
-against static IF/AE flags.
-
-Inputs:
-  - {RESULTS_RUN_DIR}/scores_with_blends.csv (preferred)
-  - {RESULTS_RUN_DIR}/scores_with_thresholds.csv
-  - {RESULTS_RUN_DIR}/columns_map.json
-
-Outputs:
-  - {RESULTS_RUN_DIR}/window_counts_detail.csv
-  - {RESULTS_RUN_DIR}/window_counts_totals.csv
-"""
-
 from __future__ import annotations
 import os
 import json
-import numpy as np
 import pandas as pd
 
 import config.config as config
-from src.utils import slice_by_date, write_csv, ensure_static_flags
-from src.thresholding.ids import q_to_str
-from src.thresholding.counting import counts_variant_vs_static
+from src.utils import load_scores, write_csv
 
+IF_SCORE_COL = "if_score"
+AE_SCORE_COL = "lstm_score"
+TS_COL = "timestamp"
 
 def _log(msg: str) -> None:
     print(f"[counts] {msg}")
 
+def _pick_input(results_dir: str, fallback: str) -> str:
+    for p in [os.path.join(results_dir, "scores_with_blends.csv"),
+              os.path.join(results_dir, "scores_with_thresholds.csv")]:
+        if os.path.exists(p):
+            _log(f"Using data: {p}")
+            return p
+    _log(f"[warn] Falling back to DATA_PATH: {fallback}")
+    return fallback
 
-def _selected_keys(adaptive_map: dict) -> set[str]:
-    """
-    Map SELECTED_COMBOS tuples (if any) to sidecar-style keys.
-    """
-    if not config.SELECTED_COMBOS:
-        return set(adaptive_map.keys())
+def _load_sidecar(results_dir: str) -> dict:
+    sidecar_path = os.path.join(results_dir, "columns_map.json")
+    if not os.path.exists(sidecar_path):
+        raise FileNotFoundError("columns_map.json not found. Run 01_generate_thresholds.py first.")
+    with open(sidecar_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-    want = {
-        f"IFw{w_if}q{q_to_str(q_if)}_AEw{w_ae}q{q_to_str(q_ae)}"
-        for (w_if, q_if, w_ae, q_ae) in config.SELECTED_COMBOS
+def _hybrid_col_for_combo(df: pd.DataFrame, sidecar: dict, cid: str) -> str:
+    """
+    Prefer latest variant: dwell -> blend -> adaptive.
+    Sidecar may or may not have blends; fall back robustly.
+    """
+    # dwell (if present)
+    for blend_name in ["DWELL_PATTERN", "Dwell_Pattern", "dwell_pattern"]:
+        col = sidecar.get("blends", {}).get(blend_name, {}).get(cid, {}).get("hybrid_label")
+        if col and col in df.columns:
+            return col
+    # capped minmax
+    for blend_name in ["CAPPED_minmax", "Capped_Minmax", "capped_minmax"]:
+        col = sidecar.get("blends", {}).get(blend_name, {}).get(cid, {}).get("hybrid_label")
+        if col and col in df.columns:
+            return col
+    # adaptive (always written by step 01)
+    col = sidecar.get("combos", {}).get(cid, {}).get("hybrid_label")
+    if col and col in df.columns:
+        return col
+    raise RuntimeError(f"No hybrid label column found in dataframe for combo id {cid}.")
+
+def _parse_windows() -> list[dict]:
+    """
+    config.EVAL_WINDOWS is a list of dicts: {label,start,end}.
+    Normalize to Timestamp bounds and validate.
+    """
+    win_dicts = config.EVAL_WINDOWS or []
+    out = []
+    for w in win_dicts:
+        label = w.get("label")
+        start = pd.to_datetime(w.get("start"))
+        end = pd.to_datetime(w.get("end"))
+        if label is None or pd.isna(start) or pd.isna(end):
+            raise ValueError(f"Bad window spec: {w}")
+        out.append({"label": label, "start": start, "end": end})
+    return out
+
+def _count_types(series: pd.Series) -> dict:
+    """
+    Count anomaly label categories. Expected values: 'Point','Pattern','Compound','None' (or NaN).
+    """
+    vc = series.value_counts(dropna=False)
+    get = lambda k: int(vc.get(k, 0))
+    none_ct = int(vc.get("None", 0)) + int(vc.get(None, 0))  # be tolerant
+    return {
+        "n_point": get("Point"),
+        "n_pattern": get("Pattern"),
+        "n_compound": get("Compound"),
+        "n_none": none_ct
     }
-    have = set(adaptive_map.keys())
-    valid = want & have
-    missing = want - have
-    if missing:
-        _log(f"[warn] {len(missing)} SELECTED_COMBOS not in sidecar, e.g. {list(missing)[:3]}")
-    if not valid:
-        raise RuntimeError("After filtering, no SELECTED_COMBOS remain in sidecar.")
-    return valid
-
-
-def _pick_if_ae_cols_for_blend(cols: dict) -> tuple[str | None, str | None]:
-    """
-    Prefer dwell -> blended flags -> raw adaptive flags.
-    """
-    if_col = cols.get("if_flag_dwell") or cols.get("if_blend_flag") or cols.get("if_flag")
-    ae_col = cols.get("ae_flag_dwell") or cols.get("ae_blend_flag") or cols.get("ae_flag")
-    return if_col, ae_col
-
 
 def main() -> None:
-    # Prefer blended dataset if available
-    csv_blends = os.path.join(config.RESULTS_RUN_DIR, "scores_with_blends.csv")
-    csv_base   = os.path.join(config.RESULTS_RUN_DIR, "scores_with_thresholds.csv")
-    sidecar_path = os.path.join(config.RESULTS_RUN_DIR, "columns_map.json")
+    # Load data
+    csv_in = _pick_input(config.RESULTS_RUN_DIR, config.DATA_PATH)
+    df = load_scores(csv_in)
+    if TS_COL not in df.columns:
+        raise KeyError(f"Missing timestamp column '{TS_COL}' in dataset.")
+    df[TS_COL] = pd.to_datetime(df[TS_COL])
 
-    csv_path = csv_blends if os.path.exists(csv_blends) else csv_base
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"No CSV found. Tried:\n - {csv_blends}\n - {csv_base}")
-    if not os.path.exists(sidecar_path):
-        raise FileNotFoundError(f"Sidecar not found: {sidecar_path}")
+    # Windows (dict-based)
+    windows = _parse_windows()
+    if not windows:
+        _log("No EVAL_WINDOWS configured; nothing to count.")
+        return
+    _log(f"Windows: {[w['label'] for w in windows]}")
 
-    _log(f"Using data: {csv_path}")
-    df = pd.read_csv(csv_path, parse_dates=["timestamp"], low_memory=False)
-    with open(sidecar_path, "r", encoding="utf-8") as f:
-        sidecar = json.load(f)
-
-    # Ensure static baseline flags
-    created = ensure_static_flags(
-        df,
-        if_score_col="if_score",
-        ae_score_col="lstm_score",
-        static_if_thr=config.STATIC_THRESH_IF,
-        static_ae_thr=config.STATIC_THRESH_AE,
-        static_if_col=config.STATIC_IF_COL,
-        static_ae_col=config.STATIC_AE_COL,
-        force_recreate=False,
-    )
-    if created:
-        _log(f"Created static flags: {created}")
-
-    # Build evaluation windows
-    WINDOWS = [
-        {**w, "id": f"{w['label'].strip().replace(' ', '_')}_{w['start']}_{w['end']}"}
-        for w in config.EVAL_WINDOWS
-    ]
-    if not WINDOWS:
-        raise RuntimeError("No EVAL_WINDOWS defined in config.py")
-    _log(f"Windows: {[w['label'] for w in WINDOWS]}")
-
-    adaptive_map = sidecar.get("combos", {})
-    blends_root  = sidecar.get("blends", {})
+    # Sidecar for combos and (if present) blend outputs
+    sidecar = _load_sidecar(config.RESULTS_RUN_DIR)
+    combos = sidecar.get("combos", {})
+    if not combos:
+        _log("No combos found in sidecar; nothing to count.")
+        return
     scope = sidecar.get("meta", {}).get("combos_scope", "all")
+    _log(f"Counting over {len(combos)} combos (sidecar scope={scope}).")
 
-    # Default valid_keys = sidecar combos
-    valid_keys = set(adaptive_map.keys())
+    # Build detail rows
+    detail_rows = []
+    for cid, meta in combos.items():
+        # pick hybrid label column (latest available)
+        hybrid_col = _hybrid_col_for_combo(df, sidecar, cid)
 
-    # Legacy override (COUNT_COMBOS_SCOPE) if present
-    if getattr(config, "LEGACY_COUNT_COMBOS_SCOPE", None):
-        if config.LEGACY_COUNT_COMBOS_SCOPE == "selected":
-            valid_keys = _selected_keys(adaptive_map)
-        elif config.LEGACY_COUNT_COMBOS_SCOPE == "all":
-            valid_keys = set(adaptive_map.keys())
-        _log(f"[warn] Using legacy COUNT_COMBOS_SCOPE={config.LEGACY_COUNT_COMBOS_SCOPE}; "
-             f"sidecar scope={scope}")
+        for w in windows:
+            label = w["label"]
+            start, end = w["start"], w["end"]
+            mask = (df[TS_COL] >= start) & (df[TS_COL] <= end)
+            window_slice = df.loc[mask]
 
-    _log(f"Counting over {len(valid_keys)} combos (sidecar scope={scope}).")
+            counts = _count_types(window_slice[hybrid_col])
 
-    # Run counts
-    rows = []
-    for w in WINDOWS:
-        dfw = slice_by_date(df, "timestamp", w["start"], w["end"])
+            detail_rows.append({
+                "window": label,
+                "start": start.strftime("%Y-%m-%d"),
+                "end": end.strftime("%Y-%m-%d"),
+                "combo_id": cid,
+                "if_window_h": meta.get("if_window"),
+                "if_q": meta.get("if_quantile"),
+                "ae_window_h": meta.get("ae_window"),
+                "ae_q": meta.get("ae_quantile"),
+                "hybrid_col": hybrid_col,
+                "n_rows": int(window_slice.shape[0]),
+                **counts,
+                "n_anom": counts["n_point"] + counts["n_pattern"] + counts["n_compound"],
+            })
 
-        # adaptive combos
-        for cid in valid_keys:
-            meta = adaptive_map[cid]
-            if_col, ae_col = meta["if_flag"], meta["ae_flag"]
-            if (if_col not in dfw.columns) or (ae_col not in dfw.columns):
-                continue
+    detail_df = pd.DataFrame(detail_rows)
 
-            res = counts_variant_vs_static(dfw, if_col, ae_col,
-                                           config.STATIC_IF_COL, config.STATIC_AE_COL)
-            res.insert(0, "method", f"adaptive_{cid}")
-            res.insert(0, "window_id", w["id"])
-            res.insert(0, "window_label", w["label"])
-            rows.append(res)
+    # Totals per window (sum over combos)
+    totals = (
+        detail_df
+        .groupby(["window", "start", "end"], as_index=False)[
+            ["n_rows", "n_point", "n_pattern", "n_compound", "n_none", "n_anom"]
+        ]
+        .sum()
+        .sort_values(["window"])
+        .reset_index(drop=True)
+    )
 
-        # blends
-        for blend_name, mapping in blends_root.items():
-            for cid, cols in mapping.items():
-                if cid not in valid_keys:
-                    continue
-                if_col, ae_col = _pick_if_ae_cols_for_blend(cols)
-                if not if_col or not ae_col:
-                    continue
-                if (if_col not in dfw.columns) or (ae_col not in dfw.columns):
-                    continue
+    # Write outputs
+    out_detail = os.path.join(config.RESULTS_RUN_DIR, "window_counts_detail.csv")
+    out_totals = os.path.join(config.RESULTS_RUN_DIR, "window_counts_totals.csv")
+    write_csv(detail_df, out_detail, log_prefix="[counts]")
+    write_csv(totals, out_totals, log_prefix="[counts]")
 
-                res = counts_variant_vs_static(dfw, if_col, ae_col,
-                                               config.STATIC_IF_COL, config.STATIC_AE_COL)
-                res.insert(0, "method", f"{blend_name}_{cid}")
-                res.insert(0, "window_id", w["id"])
-                res.insert(0, "window_label", w["label"])
-                rows.append(res)
-
-    if not rows:
-        raise RuntimeError("No variants found to count.")
-
-    detail = pd.concat(rows, ignore_index=True)
-
-    # Aggregate totals
-    totals = (detail.groupby(["window_id", "window_label", "method"], as_index=False)
-              .agg(total_variant=("count_variant", "sum"),
-                   total_static=("count_static", "sum"),
-                   valid_n=("valid_n", "max")))
-    totals["Δ_total"] = totals["total_variant"] - totals["total_static"]
-    totals["rate_per_1k_variant"] = 1000 * totals["total_variant"] / totals["valid_n"].replace(0, np.nan)
-    totals["rate_per_1k_static"]  = 1000 * totals["total_static"]  / totals["valid_n"].replace(0, np.nan)
-    totals["Δ_rate_per_1k"]       = totals["rate_per_1k_variant"] - totals["rate_per_1k_static"]
-
-    # Save
-    detail_path = os.path.join(config.RESULTS_RUN_DIR, "window_counts_detail.csv")
-    totals_path = os.path.join(config.RESULTS_RUN_DIR, "window_counts_totals.csv")
-    write_csv(detail, detail_path, log_prefix="[counts]")
-    write_csv(totals, totals_path, log_prefix="[counts]")
-
-    _log(f"Saved detail -> {detail_path}")
-    _log(f"Saved totals -> {totals_path}")
-
+    _log(f"Saved detail -> {out_detail}")
+    _log(f"Saved totals -> {out_totals}")
 
 if __name__ == "__main__":
     main()

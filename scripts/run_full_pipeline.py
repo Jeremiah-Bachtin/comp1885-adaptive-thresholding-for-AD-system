@@ -7,7 +7,7 @@ Order rationale
 1) 01_generate_thresholds.py   -> compute adaptive quantiles (per combo, rolling)
 2) 02_generate_blends.py       -> apply capped-minmax + dwell (final flags/labels)
 3) 03_generate_counts.py       -> per-window counts vs static (diagnostics)
-4) 04_global_counts.py         -> aggregated/global summaries (optional analytics)
+4) 04_generate_counts_global.py         -> aggregated/global summaries (optional analytics)
 5) 05_compute_confidence.py    -> percentile-rank confidence using the SAME windows
                                   and warm-up as thresholds; uses final labels from (2)
 

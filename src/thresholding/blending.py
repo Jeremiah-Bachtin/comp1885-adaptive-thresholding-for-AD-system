@@ -1,6 +1,5 @@
 # src/thresholding/blending.py
 from __future__ import annotations
-
 from typing import Dict
 import re
 import numpy as np
@@ -9,17 +8,9 @@ import pandas as pd
 from src.utils import naming as N
 from src.thresholding.hybrid_labelling import hybrid_from_flags
 
-
-# -----------------------------
-# Low-level helpers
-# -----------------------------
+# ---------- internals ----------
 
 def _apply_flag(scores: pd.Series, thresh: pd.Series, direction: str) -> pd.Series:
-    """
-    Vectorised thresholding with nullable boolean output.
-    direction: 'low' => score <= threshold (IF)
-               'high' => score >= threshold (AE)
-    """
     out = pd.Series(pd.NA, index=scores.index, dtype="boolean")
     valid = thresh.notna()
     if direction == "low":
@@ -30,11 +21,7 @@ def _apply_flag(scores: pd.Series, thresh: pd.Series, direction: str) -> pd.Seri
         raise ValueError("direction must be 'low' or 'high'")
     return out
 
-
 def _dwell_runlength(flag: pd.Series, k: int) -> pd.Series:
-    """
-    Emit True after >=k consecutive True; NA treated as False.
-    """
     base = flag.fillna(False).astype(int).to_numpy()
     out = np.zeros_like(base, dtype=bool)
     run = 0
@@ -43,29 +30,19 @@ def _dwell_runlength(flag: pd.Series, k: int) -> pd.Series:
         out[i] = run >= k
     return pd.Series(out, index=flag.index, dtype="boolean")
 
-
 def _extract_wq(thr_or_flag_col: str) -> tuple[int, int]:
-    """
-    Parse __w{hours}_q{qqq} from a column name and return (hours, q*1000 as int).
-    """
+    # matches model-scoped tokens like "__w1080_q030"
     m = re.search(r"__w(\d+)_q(\d{3})", thr_or_flag_col)
     if not m:
         raise ValueError(f"Cannot parse window/quantile token from column: {thr_or_flag_col}")
     return int(m.group(1)), int(m.group(2))
 
-
 def _tag_from_pair(if_col: str, ae_col: str) -> str:
-    """
-    Build canonical combo tag from a pair of IF/AE cols that contain __w..._q...
-    """
     w_if_h, q_if3 = _extract_wq(if_col)
     w_ae_h, q_ae3 = _extract_wq(ae_col)
     return N.tag(w_if_h, q_if3 / 1000.0, w_ae_h, q_ae3 / 1000.0)
 
-
-# -----------------------------
-# Public API
-# -----------------------------
+# ---------- public API ----------
 
 def capped_minmax_thresholds(
     df: pd.DataFrame,
@@ -77,14 +54,8 @@ def capped_minmax_thresholds(
     cap_delta: float,
 ) -> Dict[str, str]:
     """
-    Apply capped min–max blending to adaptive thresholds and write blended thresholds.
-
     IF_blend = max( min(static_IF, IF_adapt), IF_adapt - δ )
     AE_blend = min( max(static_AE, AE_adapt), AE_adapt + δ )
-
-    Returns a dict with keys:
-      - "if_blend_thresh"
-      - "ae_blend_thresh"
     """
     # IF
     if_adapt = df[if_adaptive_thr_col]
@@ -95,14 +66,10 @@ def capped_minmax_thresholds(
     # AE
     ae_adapt = df[ae_adaptive_thr_col]
     ae_blend_vals = np.minimum(np.maximum(static_ae_thr, ae_adapt), ae_adapt + cap_delta)
-    ae_blend_col = N.thr_if_blend(ae_adaptive_thr_col, cap_delta)  # same suffixing rule
+    ae_blend_col = N.thr_if_blend(ae_adaptive_thr_col, cap_delta)  # same suffixing scheme
     df[ae_blend_col] = pd.Series(ae_blend_vals, index=df.index)
 
-    return {
-        "if_blend_thresh": if_blend_col,
-        "ae_blend_thresh": ae_blend_col,
-    }
-
+    return {"if_blend_thresh": if_blend_col, "ae_blend_thresh": ae_blend_col}
 
 def flags_from_thresholds(
     df: pd.DataFrame,
@@ -113,36 +80,31 @@ def flags_from_thresholds(
     ae_thr_col: str,
 ) -> Dict[str, str]:
     """
-    Derive nullable-boolean blended flags from blended thresholds, with canonical names.
-
-    Expected threshold names contain "__w{hours}_q{qqq}" and end with "_blend_cap{ddd}".
-    Returns:
-      - "if_flag_col"
-      - "ae_flag_col"
+    Build blended flags from the blended thresholds.
+    Expects threshold names to contain "__w{hours}_q{qqq}" and end with "_blend_cap{ddd}".
     """
-    # Parse cap suffix from threshold names and ensure it matches for IF/AE
+    # verify cap suffix matches
     m_if = re.search(r"_blend_cap(\d{3})$", if_thr_col)
     m_ae = re.search(r"_blend_cap(\d{3})$", ae_thr_col)
     if not (m_if and m_ae and m_if.group(1) == m_ae.group(1)):
         raise ValueError("Blend cap suffix mismatch between IF/AE thresholds.")
     cap = int(m_if.group(1)) / 1000.0
 
-    # Extract base adaptive flag names
+    # base adaptive flag column names (model-scoped tokens)
     w_if_h, q_if3 = _extract_wq(if_thr_col)
     w_ae_h, q_ae3 = _extract_wq(ae_thr_col)
     base_if_flag = N.flg_if_adapt(w_if_h, q_if3 / 1000.0)
     base_ae_flag = N.flg_ae_adapt(w_ae_h, q_ae3 / 1000.0)
 
-    # Final blended flag columns (no double "blend"!)
+    # blended flag column names
     if_flag_col = N.flg_if_blend(base_if_flag, cap)
     ae_flag_col = N.flg_if_blend(base_ae_flag, cap)
 
-    # Compute flags with correct tail directions
+    # compute flags
     df[if_flag_col] = _apply_flag(df[if_score_col], df[if_thr_col], "low")
     df[ae_flag_col] = _apply_flag(df[ae_score_col], df[ae_thr_col], "high")
 
     return {"if_flag_col": if_flag_col, "ae_flag_col": ae_flag_col}
-
 
 def dwell_on_pattern_only(
     df: pd.DataFrame,
@@ -152,29 +114,15 @@ def dwell_on_pattern_only(
     k: int,
 ) -> Dict[str, str]:
     """
-    Apply k-consecutive True dwell ONLY to AE (Pattern) anomalies.
-    IF (Point) anomalies are left unchanged.
-
-    Returns:
-      - "if_flag_col"  (unchanged IF flag col)
-      - "ae_dwell_col" (AE flag after dwell)
-      - "hybrid_col"   (hybrid label after dwell)
+    Apply k-consecutive dwell to AE only (Pattern). IF (Point) unchanged.
     """
-    # IF unchanged
     if_dwell_col = if_flag_col
-
-    # AE dwell
     ae_dwell_col = N.dwell(ae_flag_col, k)
     df[ae_dwell_col] = _dwell_runlength(df[ae_flag_col], k)
 
-    # Hybrid label with canonical tag
     tag = _tag_from_pair(if_flag_col, ae_flag_col)
     hybrid_col = N.hybrid_name(f"pattern_dwell{k}", tag)
     df[hybrid_col] = hybrid_from_flags(df[if_dwell_col].astype("boolean"),
                                        df[ae_dwell_col].astype("boolean"))
 
-    return {
-        "if_flag_col": if_dwell_col,
-        "ae_dwell_col": ae_dwell_col,
-        "hybrid_col": hybrid_col,
-    }
+    return {"if_flag_col": if_dwell_col, "ae_dwell_col": ae_dwell_col, "hybrid_col": hybrid_col}
