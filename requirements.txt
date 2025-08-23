@@ -7,10 +7,9 @@ joblib==1.2.0
 matplotlib==3.8.4
 seaborn==0.13.2
 tqdm
-python_version<3.11
 
 # === ML Framework ===
-tensorflow==2.10.1   # Safe for Windows GPU training/inference
+tensorflow==2.10.1 ; platform_system == "Windows" and python_version < "3.11"  # Safe for Windows GPU training/inference
 
 # === Evaluation & Utilities ===
 python-dotenv==1.1.0
