@@ -23,13 +23,6 @@ import sys
 import time
 import subprocess
 from typing import Sequence, Tuple
-# import warnings
-# warnings.filterwarnings("ignore", category=getattr(__import__("pandas").errors, "PerformanceWarning"))
-# try:
-#     warnings.filterwarnings("ignore", category=__import__("pandas").core.common.PerformanceWarning)
-# except Exception:
-#     pass
-
 
 # Config + run context
 from config.config import RESULTS_RUN_DIR, RUN_SLUG, CONF_IMPL
