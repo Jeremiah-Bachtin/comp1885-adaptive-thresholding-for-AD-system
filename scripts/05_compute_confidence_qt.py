@@ -1,9 +1,11 @@
-# scripts/05_compute_confidence.py
+# scripts/05_compute_confidence_qt.py
+
 from __future__ import annotations
 import os
 import re
 import numpy as np
 import pandas as pd
+from typing import Optional
 
 from config.config import (
     DATA_PATH, RESULTS_RUN_DIR, resolve_min_periods,
@@ -12,14 +14,61 @@ from config.config import (
     CONF_COMPOUND_AGG, CONF_POINT_SOURCE, CONF_PATTERN_SOURCE,
 )
 from src.utils import load_scores, write_csv
-from src.confidence_scoring.percentile_rank import rolling_percentile_conf
+from src.confidence_scoring.percentile_rank_qt import rolling_percentile_conf
 from src.utils import naming as N
 
 IF_SCORE_COL = "if_score"
 AE_SCORE_COL = "lstm_score"
 
+
 def _log(msg: str) -> None:
     print(f"[confidence] {msg}", flush=True)
+
+def _q3(x: float) -> str:
+    return f"{int(round(x * 1000)):03d}"
+
+def _find_realised_threshold_cols(
+    df: pd.DataFrame,
+    variant: str,
+    tag: str,
+    w_if_h: int, q_if: float,
+    w_ae_h: int, q_ae: float,
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    Return column names for realised IF/AE thresholds to use at time t.
+    Preference order:
+      - If variant mentions blend/dwell -> use *_blend_* thresholds
+      - Else -> use plain adaptive thresholds
+    Falls back gracefully if not found.
+    """
+    q_if3, q_ae3 = _q3(q_if), _q3(q_ae)
+
+    base_if = f"if_adaptive_thresh__w{w_if_h}_q{q_if3}__{tag}"
+    base_ae = f"lstm_adaptive_thresh__w{w_ae_h}_q{q_ae3}__{tag}"
+
+    cand_if = [c for c in df.columns if c.startswith(base_if)]
+    cand_ae = [c for c in df.columns if c.startswith(base_ae)]
+
+    def pick(cands: list[str], variant: str) -> Optional[str]:
+        if not cands:
+            return None
+        v = variant.lower()
+        # prefer blend for variants that use blended/dwell thresholds
+        if "blend" in v or "dwell" in v:
+            blend = [c for c in cands if "_blend_" in c]
+            if blend:
+                # if multiple caps exist, pick the longest/specific one
+                blend.sort(key=len, reverse=True)
+                return blend[0]
+        # else prefer the plain adaptive version (no suffix)
+        plain = [c for c in cands if c == c.split("__")[0] + "__" + "__".join(c.split("__")[1:]) and "_blend_" not in c]
+        # more robust: the exact base name
+        exact = [c for c in cands if c == (base_if if "if_adaptive_thresh" in c else base_ae)]
+        return (exact[0] if exact else (plain[0] if plain else cands[0]))
+
+    if_col = pick(cand_if, variant)
+    ae_col = pick(cand_ae, variant)
+    return if_col, ae_col
 
 def _pick_input(results_dir: str, fallback: str) -> str:
     for p in [os.path.join(results_dir, "scores_with_blends.csv"),
@@ -140,16 +189,23 @@ def main():
         mp_if = resolve_min_periods(w_if_h)
         mp_ae = resolve_min_periods(w_ae_h)
 
-        # Per‑model confidences (threshold‑relative mode enabled via threshold_q)
+        # Per‑model confidences
+        if_col, ae_col = _find_realised_threshold_cols(df, variant, tag, w_if_h, q_if, w_ae_h, q_ae)
+
         conf_if = rolling_percentile_conf(
-            df[IF_SCORE_COL], tail="low", window_hours=w_if_h, min_periods=mp_if,
+            df[IF_SCORE_COL], tail="low",
+            window_hours=w_if_h, min_periods=mp_if,
             eps=CONF_EPS, clip_min=CONF_CLIP_MIN, clip_max=CONF_CLIP_MAX,
-            threshold_q=q_if
+            threshold_q=q_if,  # fallback
+            threshold_series=(df[if_col] if if_col in df.columns else None)
         )
+
         conf_ae = rolling_percentile_conf(
-            df[AE_SCORE_COL], tail="high", window_hours=w_ae_h, min_periods=mp_ae,
+            df[AE_SCORE_COL], tail="high",
+            window_hours=w_ae_h, min_periods=mp_ae,
             eps=CONF_EPS, clip_min=CONF_CLIP_MIN, clip_max=CONF_CLIP_MAX,
-            threshold_q=q_ae
+            threshold_q=q_ae,  # fallback
+            threshold_series=(df[ae_col] if ae_col in df.columns else None)
         )
 
         # Final column name: conf__{variant}__{tag}

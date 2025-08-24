@@ -1,3 +1,5 @@
+#environment.yml
+
 name: comp1885
 channels:
   - defaults
