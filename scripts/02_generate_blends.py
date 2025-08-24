@@ -3,7 +3,12 @@ from __future__ import annotations
 import os
 import json
 import pandas as pd
-
+import warnings
+warnings.filterwarnings("ignore", category=getattr(__import__("pandas").errors, "PerformanceWarning"))
+try:
+    warnings.filterwarnings("ignore", category=__import__("pandas").core.common.PerformanceWarning)
+except Exception:
+    pass
 import config.config as config
 from src.utils import write_csv
 from src.utils import naming as N

@@ -1,6 +1,11 @@
 # scripts/01_generate_thresholds.py
 from __future__ import annotations
-
+import warnings
+warnings.filterwarnings("ignore", category=getattr(__import__("pandas").errors, "PerformanceWarning"))
+try:
+    warnings.filterwarnings("ignore", category=__import__("pandas").core.common.PerformanceWarning)
+except Exception:
+    pass
 import os
 import json
 import config.config as config

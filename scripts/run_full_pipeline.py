@@ -23,12 +23,12 @@ import sys
 import time
 import subprocess
 from typing import Sequence, Tuple
-import warnings
-warnings.filterwarnings("ignore", category=getattr(__import__("pandas").errors, "PerformanceWarning"))
-try:
-    warnings.filterwarnings("ignore", category=__import__("pandas").core.common.PerformanceWarning)
-except Exception:
-    pass
+# import warnings
+# warnings.filterwarnings("ignore", category=getattr(__import__("pandas").errors, "PerformanceWarning"))
+# try:
+#     warnings.filterwarnings("ignore", category=__import__("pandas").core.common.PerformanceWarning)
+# except Exception:
+#     pass
 
 
 # Config + run context
@@ -79,7 +79,7 @@ def main() -> None:
     _log("=== COMP1885 Pipeline ===")
     _log(f"[runner] Run slug: {RUN_SLUG}")
     _log(f"[runner] Results dir: {RESULTS_RUN_DIR}")
-    _log(f"[runner] CONF_IMPL: {impl}")
+    # _log(f"[runner] CONF_IMPL: {impl}")
 
     failures = 0
     for name, enabled in STEPS:
