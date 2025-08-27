@@ -1,4 +1,4 @@
-# Config Directory
+# Config Directory (config/)
 
 This folder contains all **project settings**.  
 It controls how the pipeline runs without changing the code.

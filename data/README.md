@@ -1,4 +1,4 @@
-# Dataset Metadata – `comp1884_train_scores.csv`
+# Dataset Metadata – `comp1884_train_scores.csv` (/data)
 
 **Source:** Hourly historical (Mar 2017 - Jan 2025) weather data retrieved from [Open-Meteo](https://open-meteo.com), including: <br>
 `timestamp`, `temperature_2m`, `surface_pressure`, `wind_speed_10m`, and `precipitation` <br> 
