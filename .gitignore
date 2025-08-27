@@ -27,9 +27,10 @@ Thumbs.db
 *.tmp
 
 # === Outputs and Debug Artefacts (ignored by default) ===
-results/*
-!results/final/
-!results/final/**
+/results/*
+!/results/final/
+/results/final/figures
+!/results/final/**
 
 # === Model Weights ===
 models/
