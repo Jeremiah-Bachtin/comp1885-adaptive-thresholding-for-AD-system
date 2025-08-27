@@ -1,4 +1,4 @@
-# COMP1885 — Static vs Adaptive Thresholds (Counts & Visual Review) (/notebooks/comapre_thresholds.ipynb)
+# COMP1885 — Static vs Adaptive Thresholds (Counts & Visual Review) (/notebooks/compare_thresholds.ipynb)
 
 ## Overview
 This notebook compares **static** thresholds with three **adaptive** variants (plain adaptive, capped–minmax, and dwell) and adds **confidence scoring** for interpretability. It consumes summary CSVs from `results/final/`, scores methods for *calm suppression* vs *event responsiveness*, shortlists the top three, and generates diagnostic figures.
