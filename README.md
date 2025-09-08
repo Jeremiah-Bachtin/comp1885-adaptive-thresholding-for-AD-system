@@ -57,7 +57,7 @@ This project extends the COMP1884 anomaly detection work with **adaptive thresho
 
 ## Pipeline Steps
 
-1. **01_generate_thresholds.py** – compute static + adaptive rolling quantiles, generate model flags and **hybrid labels** (Point/Pattern/Compound).  
+1. **01_generate_thresholds.py** – compute adaptive rolling quantiles, generate model flags and **hybrid labels** (Point/Pattern/Compound).  
    _Outputs:_ `scores_with_thresholds.csv`, `columns_map.json`.
 
 2. **02_generate_blends.py** – apply **capped min–max** (cap ±δ) and **dwell (k)** to thresholds/flags.  
