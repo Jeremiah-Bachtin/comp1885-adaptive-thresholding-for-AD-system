@@ -1,0 +1,13 @@
+window,method_key,method,anomaly_type,count
+Event_CiaraDennis,static,static,Point,8
+Event_CiaraDennis,static,static,Pattern,14
+Event_CiaraDennis,static,static,Compound,14
+Event_CiaraDennis,adaptive_IFw1080q010_AEw720q950,adaptive,Point,0
+Event_CiaraDennis,adaptive_IFw1080q010_AEw720q950,adaptive,Pattern,10
+Event_CiaraDennis,adaptive_IFw1080q010_AEw720q950,adaptive,Compound,5
+Event_CiaraDennis,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Point,7
+Event_CiaraDennis,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Pattern,19
+Event_CiaraDennis,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Compound,9
+Event_CiaraDennis,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Point,7
+Event_CiaraDennis,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Pattern,18
+Event_CiaraDennis,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Compound,9

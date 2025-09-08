@@ -1,0 +1,13 @@
+window,method_key,method,anomaly_type,count
+Calm_2019,static,static,Point,3
+Calm_2019,static,static,Pattern,4
+Calm_2019,static,static,Compound,0
+Calm_2019,adaptive_IFw1080q010_AEw720q950,adaptive,Point,1
+Calm_2019,adaptive_IFw1080q010_AEw720q950,adaptive,Pattern,3
+Calm_2019,adaptive_IFw1080q010_AEw720q950,adaptive,Compound,0
+Calm_2019,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Point,3
+Calm_2019,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Pattern,0
+Calm_2019,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Compound,0
+Calm_2019,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Point,3
+Calm_2019,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Pattern,2
+Calm_2019,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Compound,0

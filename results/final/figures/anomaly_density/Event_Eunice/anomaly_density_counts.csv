@@ -1,0 +1,13 @@
+window,method_key,method,anomaly_type,count
+Event_Eunice,static,static,Point,11
+Event_Eunice,static,static,Pattern,26
+Event_Eunice,static,static,Compound,11
+Event_Eunice,adaptive_IFw1080q010_AEw720q950,adaptive,Point,1
+Event_Eunice,adaptive_IFw1080q010_AEw720q950,adaptive,Pattern,44
+Event_Eunice,adaptive_IFw1080q010_AEw720q950,adaptive,Compound,6
+Event_Eunice,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Point,5
+Event_Eunice,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Pattern,20
+Event_Eunice,CAPPED_minmax_IFw336q030_AEw336q975,capped-minmax,Compound,6
+Event_Eunice,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Point,7
+Event_Eunice,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Pattern,20
+Event_Eunice,DWELL_PATTERN_IFw336q030_AEw336q950,dwell,Compound,4
